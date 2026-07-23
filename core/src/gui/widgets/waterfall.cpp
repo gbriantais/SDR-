@@ -341,7 +341,7 @@ namespace ImGui {
             }
 
             // Now, check frequency scale
-            if (!targetFound && mouseInFreq) {
+            if (!targetFound && mouseInFreq && !gui::mainWindow.frequencyLocked) {
                 freqScaleSelect = true;
             }
         }
@@ -408,7 +408,7 @@ namespace ImGui {
         }
 
         // If the mouse wheel is moved on the frequency scale
-        if (mouseWheel != 0 && mouseInFreq) {
+        if (mouseWheel != 0 && mouseInFreq && !gui::mainWindow.frequencyLocked) {
             viewOffset -= (double)mouseWheel * viewBandwidth / 20.0;
 
             if (viewOffset + (viewBandwidth / 2.0) > wholeBandwidth / 2.0) {
@@ -436,7 +436,7 @@ namespace ImGui {
 
         // If the left and right keys are pressed while hovering the freq scale, move it too
         bool leftKeyPressed = ImGui::IsKeyPressed(ImGuiKey_LeftArrow);
-        if ((leftKeyPressed || ImGui::IsKeyPressed(ImGuiKey_RightArrow)) && mouseInFreq) {
+        if ((leftKeyPressed || ImGui::IsKeyPressed(ImGuiKey_RightArrow)) && mouseInFreq && !gui::mainWindow.frequencyLocked) {
             viewOffset += leftKeyPressed ? (viewBandwidth / 20.0) : (-viewBandwidth / 20.0);
 
             if (viewOffset + (viewBandwidth / 2.0) > wholeBandwidth / 2.0) {
