@@ -1,0 +1,124 @@
+stages:
+  - build
+
+
+# Template pour calculer la version
+.get_version: &get_version
+  - |
+    if [ -n "$CI_COMMIT_TAG" ]; then
+      # On est sur un tag
+      export VERSION="${CI_COMMIT_TAG}-${CI_COMMIT_SHORT_SHA}"
+    else
+      # Commit normal
+      export VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev-${CI_COMMIT_SHORT_SHA}")
+    fi
+    echo "Building version: $VERSION"
+    export VERSION
+
+build:windows:
+  stage: build
+  needs: []
+  before_script:
+    # [SPHEREA] Environment
+    - echo "PWD = ${PWD}"
+    # [SPHEREA] Install 7-Zip
+    - choco install --no-progress -y 7zip.install
+    - export PATH="/c/Program Files/7-Zip:/cygdrive/c/Program Files/7-Zip:${PATH}"
+    - which 7z
+    # [SPHEREA] Install CMake
+    - choco install --no-progress -y cmake --version 3.31.7
+    - export PATH="/c/Program Files/CMake/bin:/cygdrive/c/Program Files/CMake/bin:${PATH}"
+    - which cmake
+    # [SPHEREA] Install MSYS2
+    - choco install --no-progress -y msys2
+    # [SPHEREA] Install vcpkg
+    - git clone https://github.com/microsoft/vcpkg.git C:/vcpkg
+    - chmod 0755 C:/vcpkg/scripts/tls12-download.exe
+    - powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command 'C:/vcpkg/scripts/bootstrap.ps1 -disableMetrics' || true
+    - powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command '$ProgressPreference = "SilentlyContinue"; Invoke-WebRequest -Uri "https://github.com/microsoft/vcpkg-tool/releases/latest/download/vcpkg.exe" -OutFile ./vcpkg.exe'
+    - mv -fv ./vcpkg.exe C:/vcpkg/
+    # [SPHEREA] Install pkgconfig
+    - C:/vcpkg/vcpkg.exe install pkgconf:x86-windows
+    - export PKG_CONFIG_EXECUTABLE='C:/tools/msys64/mingw64/bin/pkg-config.exe'
+    # Create Build Environment
+    - cmake -E make_directory ./build
+    # Download PothosSDR
+    - powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command '$ProgressPreference = "SilentlyContinue"; Invoke-WebRequest -Uri "https://downloads.myriadrf.org/builds/PothosSDR/PothosSDR-2020.01.26-vc14-x64.exe" -OutFile ./pothos.exe'
+    # Install PothosSDR
+    - mkdir "C:/Program Files/PothosSDR" ; 7z x ./pothos.exe -o"C:/Program Files/PothosSDR/"
+    # Download libusb
+    - powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command '$ProgressPreference = "SilentlyContinue"; Invoke-WebRequest -Uri "https://github.com/libusb/libusb/releases/download/v1.0.23/libusb-1.0.23.7z" -OutFile ./libusb.7z'
+    # Patch Pothos with earlier libusb version
+    - 7z x libusb.7z -olibusb_old ; rm "C:/Program Files/PothosSDR/bin/libusb-1.0.dll" ; cp "libusb_old/MS64/dll/libusb-1.0.dll" "C:/Program Files/PothosSDR/bin/" ; rm "C:/Program Files/PothosSDR/lib/libusb-1.0.lib" ; cp "libusb_old/MS64/dll/libusb-1.0.lib" "C:/Program Files/PothosSDR/lib/"
+    # Download librtlsdr
+    - powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command '$ProgressPreference = "SilentlyContinue"; Invoke-WebRequest -Uri "https://ftp.osmocom.org/binaries/windows/rtl-sdr/rtl-sdr-64bit-20240623.zip" -OutFile ./rtl-sdr.zip'
+    # Patch Pothos with newer librtlsdr version
+    - 7z x rtl-sdr.zip ; rm "C:/Program Files/PothosSDR/bin/rtlsdr.dll" ; cp "rtl-sdr-64bit-20240623/librtlsdr.dll" "C:/Program Files/PothosSDR/bin/rtlsdr.dll"
+    # Download SDRPlay API
+    - powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command '$ProgressPreference = "SilentlyContinue"; Invoke-WebRequest -Uri "https://www.sdrpp.org/SDRplay.zip" -OutFile ./SDRplay.zip'
+    # Install SDRPlay API
+    - 7z x ./SDRplay.zip -o"C:/Program Files/"
+    # Download HTRA_API
+    # DEPRECATED: - powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command '$ProgressPreference = "SilentlyContinue"; Invoke-WebRequest -Uri "https://www.harogic.com/wp-content/uploads/2024/09/HTRA_API.rar" -OutFile ./HTRA_API.rar'
+    - cp -fv ./dependencies/HTRA_API.rar ./HTRA_API.rar
+    # Extract specific directory from HTRA_API.rar
+    - 7z x ./HTRA_API.rar -o"C:/radio/HTRA_API/x64/htra_api/temp"
+    - powershell.exe -NoProfile -NonInteractive -Command "Copy-Item -Path 'C:/radio/HTRA_API/x64/htra_api/temp/HTRA_API/Windows/x64/htra_api/*' -Destination 'C:/radio/HTRA_API/x64/htra_api/' -Recurse"
+    - rm -rf C:/radio/HTRA_API/x64/htra_api/temp
+    # Display the contents of the directory after extraction
+    - ls -R C:/radio/HTRA_API/x64/htra_api/
+    # Download codec2
+    - git clone https://github.com/drowe67/codec2
+    # Prepare MinGW
+    - C:/tools/msys64/msys2_shell.cmd -defterm -here -no-start -mingw64 -c "pacman --noconfirm -S --needed base-devel mingw-w64-x86_64-toolchain mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja"
+    # Prepare build for codec2
+    - |
+      cd codec2 ; mkdir build ; cd build ; C:/tools/msys64/msys2_shell.cmd -defterm -here -no-start -mingw64 -c "cmake .. -DCMAKE_GNUtoMS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS=-static-libgcc"
+      cd ../../
+    # Build codec2
+    - |
+      cd codec2/build ; C:/tools/msys64/msys2_shell.cmd -defterm -here -no-start -mingw64 -c "ninja"
+      cd ../../
+    # Install codec2
+    - |
+      mkdir "C:/Program Files/codec2" ; mkdir "C:/Program Files/codec2/include" ; mkdir "C:/Program Files/codec2/include/codec2" ; mkdir "C:/Program Files/codec2/lib" ; cd "codec2" ; xcopy "src" "C:/Program Files/codec2/include" ; cd "build" ; xcopy "src" "C:/Program Files/codec2/lib" ; xcopy "codec2" "C:/Program Files/codec2/include/codec2"
+      cd ../../
+    # Install vcpkg dependencies
+    - C:/vcpkg/vcpkg.exe install fftw3:x64-windows glfw3:x64-windows portaudio:x64-windows zstd:x64-windows libusb:x64-windows spdlog:x64-windows
+    # Install rtaudio
+    - |
+      git clone https://github.com/thestk/rtaudio ; cd rtaudio ; git checkout 2f2fca4502d506abc50f6d4473b2836d24cfb1e3 ; mkdir build ; cd build ; cmake -DPKG_CONFIG_EXECUTABLE="${PKG_CONFIG_EXECUTABLE}" .. ; cmake --build . --config Release ; cmake --install .
+      cd ../../
+    # Install libperseus-sdr
+    - |
+      git clone https://github.com/AlexandreRouma/libperseus-sdr ; cd libperseus-sdr ; mkdir build ; cd build ; cmake -DCMAKE_BUILD_TYPE=Release "-DLIBUSB_LIBRARIES=C:/Program Files/PothosSDR/lib/libusb-1.0.lib" "-DLIBUSB_INCLUDE_DIRS=C:/Program Files/PothosSDR/include/libusb-1.0" .. "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake"  ; cmake --build . --config Release  ; mkdir "C:/Program Files/PothosSDR/include/perseus-sdr" ; cp Release/perseus-sdr.dll "C:/Program Files/PothosSDR/bin" ; cp Release/perseus-sdr.lib "C:/Program Files/PothosSDR/bin" ; cd .. ; xcopy "src" "C:/Program Files/PothosSDR/include/perseus-sdr"
+      cd ../
+    # Install librfnm
+    - |
+      git clone https://github.com/AlexandreRouma/librfnm ; cd librfnm ; mkdir build ; cd build ; cmake .. -DCMAKE_BUILD_TYPE=Release "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" -DPKG_CONFIG_EXECUTABLE="${PKG_CONFIG_EXECUTABLE}" ; cmake --build . --config Release ; cmake --install .
+      cd ../../
+    # Install libfobos
+    - |
+      git clone https://github.com/AlexandreRouma/libfobos ; cd libfobos ; mkdir build ; cd build ; cmake .. -DCMAKE_BUILD_TYPE=Release "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" -DPKG_CONFIG_EXECUTABLE="${PKG_CONFIG_EXECUTABLE}" ; cmake --build . --config Release ; cmake --install .
+      cd ../../
+    # Install tinyxml
+    - |
+      git clone https://github.com/leethomason/tinyxml2.git ; cd tinyxml2; mkdir build ; cd build ; cmake .. -DCMAKE_BUILD_TYPE=Release "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" -DPKG_CONFIG_EXECUTABLE="${PKG_CONFIG_EXECUTABLE}" ; cmake --build . --config Release ; cmake --install .
+      cd ../../
+  script:
+    # Prepare CMake
+    - cd ./build/
+    - cmake -DCOPY_MSVC_REDISTRIBUTABLES=ON .. "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" -DOPT_BUILD_BLADERF_SOURCE=ON -DOPT_BUILD_LIMESDR_SOURCE=ON -DOPT_BUILD_PERSEUS_SOURCE=ON -DOPT_BUILD_SDRPLAY_SOURCE=ON -DOPT_BUILD_NEW_PORTAUDIO_SINK=ON -DOPT_BUILD_M17_DECODER=ON -DOPT_BUILD_RFNM_SOURCE=ON -DOPT_BUILD_FOBOSSDR_SOURCE=ON
+    - cd ../
+    # Build
+    - cd ./build/
+    - cmake --build . --config Release --verbose
+    - cd ../
+    # Create Archive
+    - powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass ./make_windows_package.ps1 ./build ./root
+  artifacts:
+    expire_in: 1 hour
+    paths:
+      - sdrpp_windows_x64.zip
+  tags:
+    - legacy-windows-10-base
