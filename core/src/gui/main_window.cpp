@@ -314,13 +314,24 @@ double MainWindow::clampFrequency(double f) {
     return f;
 }
 
-void MainWindow::setFrequencyLimits(bool enabled, double minFreq, double maxFreq) {
+void MainWindow::setFrequencyLimits(bool enabled, double minFreq, double maxFreq, bool fixedBand) {
     serverFreqLimitEnabled = enabled;
     serverFreqMin = minFreq;
     serverFreqMax = maxFreq;
+    serverFreqFixedBand = fixedBand;
 
-    flog::info("Server frequency limits: enabled={}, min={} Hz, max={} Hz",
-               enabled, minFreq, maxFreq);
+    flog::info("Server frequency limits: enabled={}, min={} Hz, max={} Hz, fixedBand={}",
+               enabled, minFreq, maxFreq, fixedBand);
+}
+
+bool MainWindow::isFixedBandSource() {
+    // true = la source a une bande IQ fixe (non retunable) : la fréquence
+    // centrale matérielle ne doit jamais bouger, seul le VFO/la démod peut
+    // se déplacer à l'intérieur de la bande déjà reçue.
+    // false = la bande est bornée mais la source peut réellement retuner
+    // à l'intérieur de ces bornes (ex: ArcaleServer_source) : un simple
+    // clamp suffit, il ne faut pas bloquer le bandeau.
+    return serverFreqLimitEnabled && serverFreqFixedBand;
 }
 
 void MainWindow::updateInitialCenterFreq(double fc) {

@@ -383,16 +383,16 @@ namespace ImGui {
             if (viewOffset + (viewBandwidth / 2.0) > wholeBandwidth / 2.0) {
                 double freqOffset = (viewOffset + (viewBandwidth / 2.0)) - (wholeBandwidth / 2.0);
                 viewOffset = (wholeBandwidth / 2.0) - (viewBandwidth / 2.0);
-                if (!centerFrequencyLocked) {
-                    centerFreq += freqOffset;
+                if (!centerFrequencyLocked && !gui::mainWindow.isFixedBandSource()) {
+                    centerFreq = gui::mainWindow.clampFrequency(centerFreq + freqOffset);
                     centerFreqMoved = true;
                 }
             }
             if (viewOffset - (viewBandwidth / 2.0) < -(wholeBandwidth / 2.0)) {
                 double freqOffset = (viewOffset - (viewBandwidth / 2.0)) + (wholeBandwidth / 2.0);
                 viewOffset = (viewBandwidth / 2.0) - (wholeBandwidth / 2.0);
-                if (!centerFrequencyLocked) {
-                    centerFreq += freqOffset;
+                if (!centerFrequencyLocked && !gui::mainWindow.isFixedBandSource()) {
+                    centerFreq = gui::mainWindow.clampFrequency(centerFreq + freqOffset);
                     centerFreqMoved = true;
                 }
             }
@@ -414,14 +414,18 @@ namespace ImGui {
             if (viewOffset + (viewBandwidth / 2.0) > wholeBandwidth / 2.0) {
                 double freqOffset = (viewOffset + (viewBandwidth / 2.0)) - (wholeBandwidth / 2.0);
                 viewOffset = (wholeBandwidth / 2.0) - (viewBandwidth / 2.0);
-                centerFreq += freqOffset;
-                centerFreqMoved = true;
+                if (!centerFrequencyLocked && !gui::mainWindow.isFixedBandSource()) {
+                    centerFreq = gui::mainWindow.clampFrequency(centerFreq + freqOffset);
+                    centerFreqMoved = true;
+                }
             }
             if (viewOffset - (viewBandwidth / 2.0) < -(wholeBandwidth / 2.0)) {
                 double freqOffset = (viewOffset - (viewBandwidth / 2.0)) + (wholeBandwidth / 2.0);
                 viewOffset = (viewBandwidth / 2.0) - (wholeBandwidth / 2.0);
-                centerFreq += freqOffset;
-                centerFreqMoved = true;
+                if (!centerFrequencyLocked && !gui::mainWindow.isFixedBandSource()) {
+                    centerFreq = gui::mainWindow.clampFrequency(centerFreq + freqOffset);
+                    centerFreqMoved = true;
+                }
             }
 
             lowerFreq = (centerFreq + viewOffset) - (viewBandwidth / 2.0);
@@ -442,14 +446,18 @@ namespace ImGui {
             if (viewOffset + (viewBandwidth / 2.0) > wholeBandwidth / 2.0) {
                 double freqOffset = (viewOffset + (viewBandwidth / 2.0)) - (wholeBandwidth / 2.0);
                 viewOffset = (wholeBandwidth / 2.0) - (viewBandwidth / 2.0);
-                centerFreq += freqOffset;
-                centerFreqMoved = true;
+                if (!centerFrequencyLocked && !gui::mainWindow.isFixedBandSource()) {
+                    centerFreq = gui::mainWindow.clampFrequency(centerFreq + freqOffset);
+                    centerFreqMoved = true;
+                }
             }
             if (viewOffset - (viewBandwidth / 2.0) < -(wholeBandwidth / 2.0)) {
                 double freqOffset = (viewOffset - (viewBandwidth / 2.0)) + (wholeBandwidth / 2.0);
                 viewOffset = (viewBandwidth / 2.0) - (wholeBandwidth / 2.0);
-                centerFreq += freqOffset;
-                centerFreqMoved = true;
+                if (!centerFrequencyLocked && !gui::mainWindow.isFixedBandSource()) {
+                    centerFreq = gui::mainWindow.clampFrequency(centerFreq + freqOffset);
+                    centerFreqMoved = true;
+                }
             }
 
             lowerFreq = (centerFreq + viewOffset) - (viewBandwidth / 2.0);

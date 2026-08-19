@@ -20,7 +20,8 @@ public:
     void setFirstMenuRender();
     void centerOnSelection();
     double clampFrequency(double f);
-    void setFrequencyLimits(bool enabled, double minFreq, double maxFreq);
+    bool isFixedBandSource();
+    void setFrequencyLimits(bool enabled, double minFreq, double maxFreq, bool fixedBand = false);
     void updateInitialCenterFreq(double fc);
     
     static float* acquireFFTBuffer(void* ctx);
@@ -50,6 +51,9 @@ private:
     bool serverFreqLimitEnabled = false;
     double serverFreqMin = 0.0;
     double serverFreqMax = 0.0;
+    // true = bande IQ figée, aucun retuning matériel possible (ex: network_source)
+    // false = bande bornée mais réellement retunable dans ces bornes (ex: ArcaleServer_source)
+    bool serverFreqFixedBand = false;
 
     // FFT Variables
     int fftSize = 8192 * 8;

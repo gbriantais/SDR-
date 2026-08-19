@@ -186,6 +186,24 @@ private:
         _this->workerThread = std::thread(&NetworkSourceModule::worker, _this);
 
         _this->running = true;
+
+        // Le flux IQ reçu est figé sur une bande fixe centrée sur la fréquence
+        // courante (freq ± samplerate/2) : il est impossible de retuner le
+        // matériel distant. On déclare donc ces limites à MainWindow afin que
+        // la commande numérique de fréquence (VFO absolu) ne puisse pas
+        // sortir de la bande IQ réellement disponible...
+        double fmin = _this->freq - (_this->samplerate / 2.0);
+        double fmax = _this->freq + (_this->samplerate / 2.0);
+        gui::mainWindow.setFrequencyLimits(true, fmin, fmax, true);
+
+        // ...et on gèle la fréquence centrale RF elle-même : le bandeau des
+        // fréquences ne doit jamais pouvoir la déplacer, ni au zoom mini ni
+        // en zoomant, puisqu'aucun retuning matériel n'est réellement
+        // possible pour cette source.
+        gui::waterfall.centerFrequencyLocked = true;
+
+        flog::info("NetworkSourceModule '{0}': Frequency limits set to [{1} Hz, {2} Hz]", _this->name, fmin, fmax);
+
         flog::info("NetworkSourceModule '{0}': Start!", _this->name);
     }
 
@@ -207,6 +225,11 @@ private:
 
         _this->running = false;
         _this->stopRequested = false;
+
+        // Retirer les limites de fréquence propres à cette source
+        gui::mainWindow.setFrequencyLimits(false, 0.0, 0.0);
+        gui::waterfall.centerFrequencyLocked = false;
+
         flog::info("NetworkSourceModule '{0}': Stop!", _this->name);
     }
 
