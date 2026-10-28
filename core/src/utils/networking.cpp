@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <utils/flog.h>
 #include <stdexcept>
+#include <cstring>
 
 namespace net {
 
@@ -502,6 +503,78 @@ namespace net {
                 return NULL;
             }
         }
+
+        return Conn(new ConnClass(sock, raddr, true));
+    }
+
+    Conn openUDPMulticast(std::string group, uint16_t port, std::string iface, int ttl) {
+        Socket sock;
+
+#ifdef _WIN32
+        // Initialize WinSock2
+        if (!winsock_init) {
+            WSADATA wsa;
+            if (WSAStartup(MAKEWORD(2, 2), &wsa)) {
+                throw std::runtime_error("Could not initialize WinSock2");
+            }
+            winsock_init = true;
+        }
+        assert(winsock_init);
+#else
+        signal(SIGPIPE, SIG_IGN);
+#endif
+
+        // Resolve the group address and make sure it is a multicast one
+        hostent* _group = gethostbyname(group.c_str());
+        if (_group == NULL || _group->h_addr_list[0] == NULL) {
+            throw std::runtime_error("Could not get address from multicast group");
+        }
+        uint32_t gnaddr = *(uint32_t*)_group->h_addr_list[0];
+        if ((ntohl(gnaddr) & 0xF0000000) != 0xE0000000) {
+            throw std::runtime_error("Not a multicast address (expected 224.0.0.0 - 239.255.255.255)");
+        }
+
+        // Create a socket
+        sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+        if (sock < 0) {
+            throw std::runtime_error("Could not create socket");
+        }
+
+        // Select the outgoing interface if one was given
+        if (!iface.empty() && iface != "0.0.0.0") {
+            hostent* _iface = gethostbyname(iface.c_str());
+            if (_iface == NULL || _iface->h_addr_list[0] == NULL) {
+#ifdef _WIN32
+                closesocket(sock);
+#else
+                close(sock);
+#endif
+                throw std::runtime_error("Could not get address from multicast interface");
+            }
+            struct in_addr ifaddr;
+            ifaddr.s_addr = *(uint32_t*)_iface->h_addr_list[0];
+            if (setsockopt(sock, IPPROTO_IP, IP_MULTICAST_IF, (const char*)&ifaddr, sizeof(ifaddr)) < 0) {
+#ifdef _WIN32
+                closesocket(sock);
+#else
+                close(sock);
+#endif
+                throw std::runtime_error("Could not select multicast interface");
+            }
+        }
+
+        // TTL and loopback (so receivers on this same host get the stream too)
+        int _ttl = ttl;
+        setsockopt(sock, IPPROTO_IP, IP_MULTICAST_TTL, (const char*)&_ttl, sizeof(_ttl));
+        int loop = 1;
+        setsockopt(sock, IPPROTO_IP, IP_MULTICAST_LOOP, (const char*)&loop, sizeof(loop));
+
+        // Create remote (group) address
+        struct sockaddr_in raddr;
+        memset(&raddr, 0, sizeof(raddr));
+        raddr.sin_addr.s_addr = gnaddr;
+        raddr.sin_family = AF_INET;
+        raddr.sin_port = htons(port);
 
         return Conn(new ConnClass(sock, raddr, true));
     }

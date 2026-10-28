@@ -120,6 +120,16 @@ namespace net {
     Listener listen(std::string host, uint16_t port);
     Conn openUDP(std::string host, uint16_t port, std::string remoteHost, uint16_t remotePort, bool bindSocket = true);
 
+    /**
+     * Open a UDP socket that sends to a multicast group.
+     * @param group Multicast group address (224.0.0.0 - 239.255.255.255).
+     * @param port Destination port.
+     * @param iface Local interface IP used to send ("0.0.0.0" lets the OS choose).
+     * @param ttl Multicast TTL (1 = local network only).
+     * @return Connection on success, throws runtime_error otherwise.
+     */
+    Conn openUDPMulticast(std::string group, uint16_t port, std::string iface = "0.0.0.0", int ttl = 1);
+
 #ifdef _WIN32
     extern bool winsock_init;
 #endif

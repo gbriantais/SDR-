@@ -26,7 +26,8 @@ ConfigManager config;
 enum Protocol {
     PROTOCOL_TCP_SERVER,
     PROTOCOL_TCP_CLIENT,
-    PROTOCOL_UDP
+    PROTOCOL_UDP,
+    PROTOCOL_UDP_MULTICAST
 };
 
 enum SampleType {
@@ -69,6 +70,7 @@ public:
         // protocols.define("TCP (Server)", PROTOCOL_TCP_SERVER);
         protocols.define("TCP (Client)", PROTOCOL_TCP_CLIENT);
         protocols.define("UDP", PROTOCOL_UDP);
+        protocols.define("UDP Multicast", PROTOCOL_UDP_MULTICAST);
 
         // Define sample types
         sampleTypes.define("Int8", SAMPLE_TYPE_INT8);
@@ -95,6 +97,11 @@ public:
         if (config.conf[name].contains("host")) {
             std::string hostStr = config.conf[name]["host"];
             strcpy(hostname, hostStr.c_str());
+        }
+        if (config.conf[name].contains("multicastInterface")) {
+            std::string ifaceStr = config.conf[name]["multicastInterface"];
+            strncpy(mcastIface, ifaceStr.c_str(), sizeof(mcastIface) - 1);
+            mcastIface[sizeof(mcastIface) - 1] = 0;
         }
         if (config.conf[name].contains("port")) {
             port = config.conf[name]["port"];
@@ -143,6 +150,19 @@ private:
         return std::string(buf);
     }
 
+    // Ouvre le socket UDP de réception selon le protocole choisi :
+    //  - UDP           : réception unicast sur l'adresse locale saisie (comportement habituel)
+    //  - UDP Multicast : le socket rejoint le groupe multicast saisi (224.0.0.0 - 239.255.255.255),
+    //                    plusieurs récepteurs peuvent écouter le même flux, y compris sur la même machine.
+    static std::shared_ptr<net::Socket> openUdpSocket(Protocol proto, const char* host, int port, const char* iface) {
+        if (proto == PROTOCOL_UDP_MULTICAST) {
+            net::Address group(host, port);
+            flog::info("Network source: joining multicast group {0}:{1} via interface {2}", group.getIPStr(), port, iface);
+            return net::openudpmulticast(group, iface);
+        }
+        return net::openudp("0.0.0.0", port, host, port, true);
+    }
+
     static void menuSelected(void* ctx) {
         NetworkSourceModule* _this = (NetworkSourceModule*)ctx;
         core::setInputSampleRate(_this->samplerate);
@@ -172,9 +192,9 @@ private:
                 // Connect to TCP server
                 _this->sock = net::connect(_this->hostname, _this->port);
             }
-            else if (_this->proto == PROTOCOL_UDP) {
+            else if (_this->proto == PROTOCOL_UDP || _this->proto == PROTOCOL_UDP_MULTICAST) {
                 // Open UDP socket
-                _this->sock = net::openudp("0.0.0.0", _this->port, _this->hostname, _this->port, true);
+                _this->sock = openUdpSocket(_this->proto, _this->hostname, _this->port, _this->mcastIface);
             }
         }
         catch (const std::exception& e) {
@@ -272,6 +292,17 @@ private:
             config.release(true);
         }
 
+        // Interface réseau utilisée pour rejoindre le groupe multicast
+        if (_this->proto == PROTOCOL_UDP_MULTICAST) {
+            SmGui::LeftLabel("Interface");
+            SmGui::FillWidth();
+            if (SmGui::InputText(("##network_source_mcast_iface_" + _this->name).c_str(), _this->mcastIface, sizeof(_this->mcastIface) - 1)) {
+                config.acquire();
+                config.conf[_this->name]["multicastInterface"] = _this->mcastIface;
+                config.release(true);
+            }
+        }
+
         // Sample type selector
         SmGui::LeftLabel("Sample type");
         SmGui::FillWidth();
@@ -314,7 +345,7 @@ private:
         int sampleSize = SAMPLE_TYPE_SIZE[sampType];
 
         // Chose amount of bytes to attempt to read
-        bool forceSize = (proto != PROTOCOL_UDP);
+        bool forceSize = (proto == PROTOCOL_TCP_SERVER || proto == PROTOCOL_TCP_CLIENT);
         int frameSize = sampleSize * (forceSize ? blockSize : STREAM_BUFFER_SIZE);
 
         // Allocate receive buffer
@@ -342,8 +373,8 @@ private:
                         if (proto == PROTOCOL_TCP_CLIENT) {
                             sock = net::connect(hostname, port);
                         }
-                        else if (proto == PROTOCOL_UDP) {
-                            sock = net::openudp("0.0.0.0", port, hostname, port, true);
+                        else if (proto == PROTOCOL_UDP || proto == PROTOCOL_UDP_MULTICAST) {
+                            sock = openUdpSocket(proto, hostname, port, mcastIface);
                         }
                         else {
                             // Server not supported here
@@ -434,6 +465,7 @@ private:
     SampleType sampType = SAMPLE_TYPE_INT16;
     int sampTypeId;
     char hostname[1024] = "localhost";
+    char mcastIface[64] = "0.0.0.0";
     int port = 1234;
 
     OptionList<std::string, Protocol> protocols;

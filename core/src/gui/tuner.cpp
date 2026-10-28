@@ -55,21 +55,39 @@ namespace tuner {
 
         // VFO too low for current SDR tuning
         if (vfoBottom < bottom) {
-            gui::waterfall.setViewOffset((BW / 2.0) - (viewBW / 2.0));
             double newVFOOffset = (BW / 2.0) - (vfoBW / 2.0) - (viewBW / 10.0);
+            double rawCenterFreq = freq - newVFOOffset;
+            double newCenterFreq = gui::mainWindow.clampFrequency(rawCenterFreq);
+            if (newCenterFreq != rawCenterFreq) {
+                // La source ne peut pas retuner jusque là (limite de bande IQ
+                // atteinte) : on ne déplace ni la vue ni le bandeau, on plaque
+                // simplement le VFO contre le bord de la bande reçue.
+                double clampedVFO = bottom + (vfoBW / 2.0);
+                sigpath::vfoManager.setCenterOffset(vfoName, clampedVFO);
+                return;
+            }
+            gui::waterfall.setViewOffset((BW / 2.0) - (viewBW / 2.0));
             sigpath::vfoManager.setOffset(vfoName, newVFOOffset);
-            gui::waterfall.setCenterFrequency(freq - newVFOOffset);
-            sigpath::sourceManager.tune(freq - newVFOOffset);
+            gui::waterfall.setCenterFrequency(newCenterFreq);
+            sigpath::sourceManager.tune(newCenterFreq);
             return;
         }
 
         // VFO too high for current SDR tuning
         if (vfoTop > top) {
-            gui::waterfall.setViewOffset((viewBW / 2.0) - (BW / 2.0));
             double newVFOOffset = (vfoBW / 2.0) - (BW / 2.0) + (viewBW / 10.0);
+            double rawCenterFreq = freq - newVFOOffset;
+            double newCenterFreq = gui::mainWindow.clampFrequency(rawCenterFreq);
+            if (newCenterFreq != rawCenterFreq) {
+                // Idem, côté haut de bande.
+                double clampedVFO = top - (vfoBW / 2.0);
+                sigpath::vfoManager.setCenterOffset(vfoName, clampedVFO);
+                return;
+            }
+            gui::waterfall.setViewOffset((viewBW / 2.0) - (BW / 2.0));
             sigpath::vfoManager.setOffset(vfoName, newVFOOffset);
-            gui::waterfall.setCenterFrequency(freq - newVFOOffset);
-            sigpath::sourceManager.tune(freq - newVFOOffset);
+            gui::waterfall.setCenterFrequency(newCenterFreq);
+            sigpath::sourceManager.tune(newCenterFreq);
             return;
         }
 
@@ -84,11 +102,18 @@ namespace tuner {
                 return;
             }
 
-            gui::waterfall.setViewOffset((BW / 2.0) - (viewBW / 2.0));
             double newVFOOffset = (BW / 2.0) - (vfoBW / 2.0) - (viewBW / 10.0);
+            double rawCenterFreq = freq - newVFOOffset;
+            double newCenterFreq = gui::mainWindow.clampFrequency(rawCenterFreq);
+            if (newCenterFreq != rawCenterFreq) {
+                double clampedVFO = bottom + (vfoBW / 2.0);
+                sigpath::vfoManager.setCenterOffset(vfoName, clampedVFO);
+                return;
+            }
+            gui::waterfall.setViewOffset((BW / 2.0) - (viewBW / 2.0));
             sigpath::vfoManager.setCenterOffset(vfoName, newVFOOffset);
-            gui::waterfall.setCenterFrequency(freq - newVFOOffset);
-            sigpath::sourceManager.tune(freq - newVFOOffset);
+            gui::waterfall.setCenterFrequency(newCenterFreq);
+            sigpath::sourceManager.tune(newCenterFreq);
         }
         else {
             double newViewOff = vfoBottom + (viewBW / 2.0) - (viewBW / 10.0);
@@ -100,11 +125,18 @@ namespace tuner {
                 return;
             }
 
-            gui::waterfall.setViewOffset((viewBW / 2.0) - (BW / 2.0));
             double newVFOOffset = (vfoBW / 2.0) - (BW / 2.0) + (viewBW / 10.0);
+            double rawCenterFreq = freq - newVFOOffset;
+            double newCenterFreq = gui::mainWindow.clampFrequency(rawCenterFreq);
+            if (newCenterFreq != rawCenterFreq) {
+                double clampedVFO = top - (vfoBW / 2.0);
+                sigpath::vfoManager.setCenterOffset(vfoName, clampedVFO);
+                return;
+            }
+            gui::waterfall.setViewOffset((viewBW / 2.0) - (BW / 2.0));
             sigpath::vfoManager.setCenterOffset(vfoName, newVFOOffset);
-            gui::waterfall.setCenterFrequency(freq - newVFOOffset);
-            sigpath::sourceManager.tune(freq - newVFOOffset);
+            gui::waterfall.setCenterFrequency(newCenterFreq);
+            sigpath::sourceManager.tune(newCenterFreq);
         }
     }
 

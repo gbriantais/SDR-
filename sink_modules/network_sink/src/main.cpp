@@ -26,10 +26,13 @@ ConfigManager config;
 
 enum {
     SINK_MODE_TCP,
-    SINK_MODE_UDP
+    SINK_MODE_UDP,
+    SINK_MODE_UDP_MULTICAST
 };
 
-const char* sinkModesTxt = "TCP\0UDP\0";
+const char* sinkModesTxt = "TCP\0UDP\0UDP Multicast\0";
+
+#define MAX_PACKET_SAMPLES 8192
 
 class NetworkSink : SinkManager::Sink {
 public:
@@ -51,6 +54,12 @@ public:
         strcpy(hostname, host.c_str());
         port = config.conf[_streamName]["port"];
         modeId = config.conf[_streamName]["protocol"];
+        if (modeId < 0 || modeId > SINK_MODE_UDP_MULTICAST) { modeId = SINK_MODE_UDP; }
+        if (config.conf[_streamName].contains("multicastInterface")) {
+            std::string iface = config.conf[_streamName]["multicastInterface"];
+            strncpy(mcastIface, iface.c_str(), sizeof(mcastIface) - 1);
+            mcastIface[sizeof(mcastIface) - 1] = 0;
+        }
         sampleRate = config.conf[_streamName]["sampleRate"];
         stereo = config.conf[_streamName]["stereo"];
         bool startNow = config.conf[_streamName]["listening"];
@@ -74,6 +83,10 @@ public:
 
         // Sort sample rate list
         std::sort(sampleRates.begin(), sampleRates.end(), [](double a, double b) { return (a < b); });
+
+        // Débits élevés ajoutés en fin de liste (après le tri) pour le transport de flux large bande
+        sampleRates.push_back(1000000);
+        sampleRates.push_back(2000000);
 
         // Generate text list for UI
         char buffer[128];
@@ -149,6 +162,19 @@ public:
             config.release(true);
         }
 
+        if (modeId == SINK_MODE_UDP_MULTICAST) {
+            ImGui::LeftLabel("Interface");
+            ImGui::SetNextItemWidth(menuWidth - ImGui::GetCursorPosX());
+            if (ImGui::InputText(CONCAT("##_network_sink_mcast_iface_", _streamName), mcastIface, sizeof(mcastIface) - 1)) {
+                config.acquire();
+                config.conf[_streamName]["multicastInterface"] = mcastIface;
+                config.release(true);
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Adresse IP de la carte reseau utilisee pour emettre\n(0.0.0.0 = choix automatique par le systeme)");
+            }
+        }
+
         if (listening) { style::endDisabled(); }
 
         ImGui::LeftLabel("Samplerate");
@@ -156,7 +182,9 @@ public:
         if (ImGui::Combo(CONCAT("##_network_sink_sr_", _streamName), &srId, sampleRatesTxt.c_str())) {
             sampleRate = sampleRates[srId];
             _stream->setSampleRate(sampleRate);
-            packer.setSampleCount(sampleRate / 60);
+            // Un datagramme UDP ne peut pas dépasser 65507 octets : on plafonne la taille des blocs
+            // (8192 échantillons = 16 Ko en mono, 32 Ko en stéréo) pour les débits élevés (1 et 2 MS/s)
+            packer.setSampleCount(std::min<int>(sampleRate / 60, MAX_PACKET_SAMPLES));
             config.acquire();
             config.conf[_streamName]["sampleRate"] = sampleRate;
             config.release(true);
@@ -224,6 +252,10 @@ private:
                     listener->acceptAsync(clientHandler, this);
                 }
             }
+            else if (modeId == SINK_MODE_UDP_MULTICAST) {
+                flog::info("Network sink: multicast group {0}:{1} via interface {2}", hostname, port, mcastIface);
+                conn = net::openUDPMulticast(hostname, port, mcastIface);
+            }
             else {
                 conn = net::openUDP("0.0.0.0", port, hostname, port, false);
             }
@@ -245,7 +277,9 @@ private:
 
         volk_32f_s32f_convert_16i(_this->netBuf, (float*)samples, 32768.0f, count);
 
-        _this->conn->write(count * sizeof(int16_t), (uint8_t*)_this->netBuf);
+        if (!_this->conn->write(count * sizeof(int16_t), (uint8_t*)_this->netBuf)) {
+            flog::error("Network sink: send failed ({} bytes), connection closed", count * (int)sizeof(int16_t));
+        }
     }
 
     static void stereoHandler(dsp::stereo_t* samples, int count, void* ctx) {
@@ -255,7 +289,9 @@ private:
 
         volk_32f_s32f_convert_16i(_this->netBuf, (float*)samples, 32768.0f, count * 2);
 
-        _this->conn->write(count * 2 * sizeof(int16_t), (uint8_t*)_this->netBuf);
+        if (!_this->conn->write(count * 2 * sizeof(int16_t), (uint8_t*)_this->netBuf)) {
+            flog::error("Network sink: send failed ({} bytes), connection closed", count * 2 * (int)sizeof(int16_t));
+        }
     }
 
     static void clientHandler(net::Conn client, void* ctx) {
@@ -288,6 +324,7 @@ private:
     bool running = false;
 
     char hostname[1024];
+    char mcastIface[64] = "0.0.0.0";
     int port = 4242;
 
     int modeId = 1;

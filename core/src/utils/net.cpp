@@ -425,4 +425,63 @@ namespace net {
     std::shared_ptr<Socket> openudp(std::string rhost, int rport, std::string lhost, int lport, bool allowBroadcast) {
         return openudp(Address(rhost, rport), Address(lhost, lport), allowBroadcast);
     }
+
+    bool isMulticast(IP_t ip) {
+        return (ip >> 28) == 0xE;
+    }
+
+    std::shared_ptr<Socket> openudpmulticast(const Address& group, std::string iface) {
+        // Init library if needed
+        init();
+
+        if (!isMulticast(group.getIP())) {
+            throw std::runtime_error("Not a multicast address");
+        }
+
+        // Resolve the local interface used to join the group
+        uint32_t ifaceAddr;
+        if (!queryHost(&ifaceAddr, iface)) {
+            throw std::runtime_error("Unknown multicast interface");
+        }
+
+        // Create socket
+        SockHandle_t s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+
+        // Allow several receivers to share the same port on this host
+#ifdef _WIN32
+        const char reuse = 1;
+#else
+        int reuse = 1;
+#endif
+        if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
+            closeSocket(s);
+            throw std::runtime_error("Could not enable address reuse on socket");
+        }
+#if !defined(_WIN32) && defined(SO_REUSEPORT)
+        setsockopt(s, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse));
+#endif
+
+        // Bind to the group port on any local address (binding to the group address itself is not supported on Windows)
+        Address laddr;
+        laddr.addr.sin_family = AF_INET;
+        laddr.addr.sin_addr.s_addr = htonl(INADDR_ANY);
+        laddr.addr.sin_port = group.addr.sin_port;
+        if (bind(s, (sockaddr*)&laddr.addr, sizeof(sockaddr_in))) {
+            closeSocket(s);
+            throw std::runtime_error("Could not bind socket");
+        }
+
+        // Join the multicast group
+        ip_mreq mreq;
+        memset(&mreq, 0, sizeof(mreq));
+        mreq.imr_multiaddr.s_addr = group.addr.sin_addr.s_addr;
+        mreq.imr_interface.s_addr = ifaceAddr;
+        if (setsockopt(s, IPPROTO_IP, IP_ADD_MEMBERSHIP, (const char*)&mreq, sizeof(mreq)) < 0) {
+            closeSocket(s);
+            throw std::runtime_error("Could not join multicast group");
+        }
+
+        // Return socket class
+        return std::make_shared<Socket>(s, &group);
+    }
 }

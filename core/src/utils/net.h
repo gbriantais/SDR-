@@ -278,5 +278,21 @@ namespace net {
      * @param lpost Local port used to bind the socket to (optional, 0 to allocate automatically).
      * @return Socket instance on success, Throws runtime_error otherwise.
      */
-    std::shared_ptr<Socket> openudp(std::string rhost, int rport, std::string lhost = "0.0.0.0", int lport = 0, bool allowBroadcast = false);  
+    std::shared_ptr<Socket> openudp(std::string rhost, int rport, std::string lhost = "0.0.0.0", int lport = 0, bool allowBroadcast = false);
+
+    /**
+     * Check if an IPv4 address is a multicast address (224.0.0.0 - 239.255.255.255).
+     * @param ip IP in host byte order.
+     * @return True if multicast.
+     */
+    bool isMulticast(IP_t ip);
+
+    /**
+     * Create a UDP socket that receives a multicast group. Several sockets (even in different processes)
+     * can join the same group and port on the same host.
+     * @param group Multicast group address and port to listen on.
+     * @param iface Local interface IP used to join the group ("0.0.0.0" lets the OS choose).
+     * @return Socket instance on success, Throws runtime_error otherwise.
+     */
+    std::shared_ptr<Socket> openudpmulticast(const Address& group, std::string iface = "0.0.0.0");
 }
