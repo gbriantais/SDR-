@@ -11,6 +11,7 @@
 #include <config.h>
 #include <gui/style.h>
 #include <core.h>
+#include <atomic>
 
 #define CONCAT(a, b) ((std::string(a) + b).c_str())
 
@@ -222,6 +223,19 @@ public:
         else {
             ImGui::TextUnformatted("Idle");
         }
+
+        // Dernière erreur (ouverture du socket ou envoi) : sans ça, le statut reste sur Idle sans explication
+        if (!listening) {
+            std::string err = lastError;
+            if (err.empty() && sendFailed) {
+                err = "Echec d'envoi : verifiez l'adresse/l'interface reseau (voir la console)";
+            }
+            if (!err.empty()) {
+                ImGui::PushTextWrapPos(0.0f);
+                ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f), "Erreur : %s", err.c_str());
+                ImGui::PopTextWrapPos();
+            }
+        }
     }
 
 private:
@@ -245,6 +259,8 @@ private:
     }
 
     void startServer() {
+        lastError.clear();
+        sendFailed = false;
         try {
             if (modeId == SINK_MODE_TCP) {
                 listener = net::listen(hostname, port);
@@ -262,6 +278,7 @@ private:
         }
         catch (const std::exception& e) {
             flog::error("Failed to open socket: {}", e.what());
+            lastError = e.what();
         }
     }
 
@@ -278,6 +295,7 @@ private:
         volk_32f_s32f_convert_16i(_this->netBuf, (float*)samples, 32768.0f, count);
 
         if (!_this->conn->write(count * sizeof(int16_t), (uint8_t*)_this->netBuf)) {
+            _this->sendFailed = true;
             flog::error("Network sink: send failed ({} bytes), connection closed", count * (int)sizeof(int16_t));
         }
     }
@@ -290,6 +308,7 @@ private:
         volk_32f_s32f_convert_16i(_this->netBuf, (float*)samples, 32768.0f, count * 2);
 
         if (!_this->conn->write(count * 2 * sizeof(int16_t), (uint8_t*)_this->netBuf)) {
+            _this->sendFailed = true;
             flog::error("Network sink: send failed ({} bytes), connection closed", count * 2 * (int)sizeof(int16_t));
         }
     }
@@ -325,6 +344,8 @@ private:
 
     char hostname[1024];
     char mcastIface[64] = "0.0.0.0";
+    std::string lastError;
+    std::atomic<bool> sendFailed{ false };
     int port = 4242;
 
     int modeId = 1;

@@ -3,6 +3,7 @@
 #include <utils/flog.h>
 #include <stdexcept>
 #include <cstring>
+#include <cerrno>
 
 namespace net {
 
@@ -113,6 +114,11 @@ namespace net {
         if (_udp) {
             ret = sendto(_sock, (char*)buf, count, 0, (struct sockaddr*)&remoteAddr, sizeof(remoteAddr));
             if (ret <= 0) {
+#ifdef _WIN32
+                flog::error("UDP send failed (WSA error {0}, {1} bytes)", WSAGetLastError(), count);
+#else
+                flog::error("UDP send failed (errno {0}, {1} bytes)", errno, count);
+#endif
                 {
                     std::lock_guard lck(connectionOpenMtx);
                     connectionOpen = false;
