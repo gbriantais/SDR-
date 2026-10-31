@@ -328,7 +328,7 @@ private:
         volk_32f_s32f_convert_16i(_this->netBuf, (float*)samples, 32768.0f, count);
 
         if (!_this->conn->write(count * sizeof(int16_t), (uint8_t*)_this->netBuf)) {
-            _this->sendErrCode = _this->conn->lastError;
+            _this->sendErrCode = _this->conn->lastError.load();
             _this->sendFailed = true;
             flog::error("Network sink: send failed ({} bytes), connection closed", count * (int)sizeof(int16_t));
         }
@@ -342,7 +342,7 @@ private:
         volk_32f_s32f_convert_16i(_this->netBuf, (float*)samples, 32768.0f, count * 2);
 
         if (!_this->conn->write(count * 2 * sizeof(int16_t), (uint8_t*)_this->netBuf)) {
-            _this->sendErrCode = _this->conn->lastError;
+            _this->sendErrCode = _this->conn->lastError.load();
             _this->sendFailed = true;
             flog::error("Network sink: send failed ({} bytes), connection closed", count * 2 * (int)sizeof(int16_t));
         }
