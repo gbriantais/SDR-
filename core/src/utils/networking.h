@@ -7,6 +7,7 @@
 #include <memory>
 #include <thread>
 #include <condition_variable>
+#include <atomic>
 
 #ifdef _WIN32
 #include <WinSock2.h>
@@ -54,6 +55,9 @@ namespace net {
         bool write(int count, uint8_t* buf);
         void readAsync(int count, uint8_t* buf, void (*handler)(int count, uint8_t* buf, void* ctx), void* ctx, bool enforceSize = true);
         void writeAsync(int count, uint8_t* buf);
+
+        // Last OS error code of a failed UDP send (WSAGetLastError on Windows, errno elsewhere), 0 if none
+        std::atomic<int> lastError{ 0 };
 
     private:
         void readWorker();

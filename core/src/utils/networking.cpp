@@ -115,10 +115,11 @@ namespace net {
             ret = sendto(_sock, (char*)buf, count, 0, (struct sockaddr*)&remoteAddr, sizeof(remoteAddr));
             if (ret <= 0) {
 #ifdef _WIN32
-                flog::error("UDP send failed (WSA error {0}, {1} bytes)", WSAGetLastError(), count);
+                lastError = WSAGetLastError();
 #else
-                flog::error("UDP send failed (errno {0}, {1} bytes)", errno, count);
+                lastError = errno;
 #endif
+                flog::error("UDP send failed (error {0}, {1} bytes)", (int)lastError, count);
                 {
                     std::lock_guard lck(connectionOpenMtx);
                     connectionOpen = false;

@@ -12,6 +12,7 @@
 #include <gui/style.h>
 #include <core.h>
 #include <atomic>
+#include <cerrno>
 
 #define CONCAT(a, b) ((std::string(a) + b).c_str())
 
@@ -30,6 +31,37 @@ enum {
     SINK_MODE_UDP,
     SINK_MODE_UDP_MULTICAST
 };
+
+// Explique en clair un code d'erreur d'envoi (Windows : WSAGetLastError, autres : errno)
+static std::string describeSendError(int code) {
+    const char* hint = "";
+#ifdef _WIN32
+    switch (code) {
+    case 10051: // WSAENETUNREACH
+    case 10065: // WSAEHOSTUNREACH
+        hint = "reseau inaccessible : la carte reseau choisie n'est pas connectee ou ne gere pas le multicast. Renseignez l'IP de votre carte reseau dans Interface (pas 127.0.0.1)"; break;
+    case 10049: hint = "adresse d'interface invalide pour cette machine"; break; // WSAEADDRNOTAVAIL
+    case 10050: hint = "interface reseau desactivee"; break; // WSAENETDOWN
+    case 10013: hint = "acces refuse (pare-feu ou adresse)"; break; // WSAEACCES
+    case 10040: hint = "paquet trop grand"; break; // WSAEMSGSIZE
+    case 10055: hint = "memoire reseau insuffisante"; break; // WSAENOBUFS
+    }
+#else
+    switch (code) {
+    case ENETUNREACH:
+    case EHOSTUNREACH:
+        hint = "reseau inaccessible : la carte reseau choisie n'est pas connectee ou ne gere pas le multicast. Renseignez l'IP de votre carte reseau dans Interface (pas 127.0.0.1)"; break;
+    case EADDRNOTAVAIL: hint = "adresse d'interface invalide pour cette machine"; break;
+    case ENETDOWN: hint = "interface reseau desactivee"; break;
+    case EACCES: hint = "acces refuse (pare-feu ou adresse)"; break;
+    case EMSGSIZE: hint = "paquet trop grand"; break;
+    case ENOBUFS: hint = "memoire reseau insuffisante"; break;
+    }
+#endif
+    std::string msg = "Echec d'envoi UDP (code " + std::to_string(code) + ")";
+    if (hint[0]) { msg += " : "; msg += hint; }
+    return msg;
+}
 
 const char* sinkModesTxt = "TCP\0UDP\0UDP Multicast\0";
 
@@ -228,7 +260,7 @@ public:
         if (!listening) {
             std::string err = lastError;
             if (err.empty() && sendFailed) {
-                err = "Echec d'envoi : verifiez l'adresse/l'interface reseau (voir la console)";
+                err = describeSendError(sendErrCode);
             }
             if (!err.empty()) {
                 ImGui::PushTextWrapPos(0.0f);
@@ -261,6 +293,7 @@ private:
     void startServer() {
         lastError.clear();
         sendFailed = false;
+        sendErrCode = 0;
         try {
             if (modeId == SINK_MODE_TCP) {
                 listener = net::listen(hostname, port);
@@ -295,6 +328,7 @@ private:
         volk_32f_s32f_convert_16i(_this->netBuf, (float*)samples, 32768.0f, count);
 
         if (!_this->conn->write(count * sizeof(int16_t), (uint8_t*)_this->netBuf)) {
+            _this->sendErrCode = _this->conn->lastError;
             _this->sendFailed = true;
             flog::error("Network sink: send failed ({} bytes), connection closed", count * (int)sizeof(int16_t));
         }
@@ -308,6 +342,7 @@ private:
         volk_32f_s32f_convert_16i(_this->netBuf, (float*)samples, 32768.0f, count * 2);
 
         if (!_this->conn->write(count * 2 * sizeof(int16_t), (uint8_t*)_this->netBuf)) {
+            _this->sendErrCode = _this->conn->lastError;
             _this->sendFailed = true;
             flog::error("Network sink: send failed ({} bytes), connection closed", count * 2 * (int)sizeof(int16_t));
         }
@@ -346,6 +381,7 @@ private:
     char mcastIface[64] = "0.0.0.0";
     std::string lastError;
     std::atomic<bool> sendFailed{ false };
+    std::atomic<int> sendErrCode{ 0 };
     int port = 4242;
 
     int modeId = 1;
